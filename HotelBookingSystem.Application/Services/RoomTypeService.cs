@@ -5,18 +5,24 @@ using HotelBookingSystem.Application.Exceptions;
 using HotelBookingSystem.Application.Interfaces.IRepositories;
 using HotelBookingSystem.Application.Interfaces.IServices;
 using HotelBookingSystem.Core.Models;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace HotelBookingSystem.Application.Services;
 
 public class RoomTypeService : IRoomTypeService
 {
+    private const string AllRoomsCacheKey = "hotel:rooms:all";
+
     private readonly IRoomTypeRepository _roomTypeRepository;
     private readonly IMapper _mapper;
+    private readonly IMemoryCache _cache;
 
-    public RoomTypeService(IRoomTypeRepository roomTypeRepository,IMapper mapper)
+    public RoomTypeService(IRoomTypeRepository roomTypeRepository,IMapper mapper,
+        IMemoryCache cache)
     {
         _roomTypeRepository = roomTypeRepository;
         _mapper = mapper;
+        _cache = cache;
     }
 
     public async Task<PaginatedResultDto<RoomTypeDto>> GetAllAsync(int pageNumber,int pageSize)
@@ -108,6 +114,8 @@ public class RoomTypeService : IRoomTypeService
         _roomTypeRepository.Update(roomType);
 
         await _roomTypeRepository.SaveChangesAsync();
+
+        _cache.Remove(AllRoomsCacheKey);
 
         return true;
     }

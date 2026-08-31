@@ -13,6 +13,13 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using HotelBookingSystem.Application.Strategies.RoomSorting;
+using HotelBookingSystem.Application.Factories.ReportExport;
+using HotelBookingSystem.Api.Features.Amenities.CreateAmenity;
+using HotelBookingSystem.Api.Features.Amenities.DeleteAmenity;
+using HotelBookingSystem.Api.Features.Amenities.GetAmenities;
+using HotelBookingSystem.Api.Features.Amenities.GetAmenityById;
+using HotelBookingSystem.Api.Features.Amenities.UpdateAmenity;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +27,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddMemoryCache();
 
 
 
@@ -27,6 +35,9 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<ApplicationDbContext>("database");
 
 
 // Identity
@@ -90,11 +101,23 @@ builder.Services.AddScoped<IAmenityRepository,AmenityRepository>();
 builder.Services.AddScoped<IBookingRepository,BookingRepository>();
 builder.Services.AddScoped<IRoomTypeService,RoomTypeService>();
 builder.Services.AddScoped<IRoomService,RoomService>();
-builder.Services.AddScoped<IAmenityService,AmenityService>();
+builder.Services.AddScoped<GetAmenitiesHandler>();
+builder.Services.AddScoped<GetAmenityByIdHandler>();
+builder.Services.AddScoped<CreateAmenityHandler>();
+builder.Services.AddScoped<UpdateAmenityHandler>();
+builder.Services.AddScoped<DeleteAmenityHandler>();
 builder.Services.AddScoped<IBookingService,BookingService>();
 builder.Services.AddScoped<IReviewRepository, ReviewRepository>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+
+builder.Services.AddScoped<IReportExporter, TextReportExporter>();
+builder.Services.AddScoped<IReportExporter, JsonReportExporter>();
+builder.Services.AddScoped<IReportExporterFactory, ReportExporterFactory>();
+
+builder.Services.AddScoped<IRoomSortingStrategy, RoomNumberSortingStrategy>();
+builder.Services.AddScoped<IRoomSortingStrategy, PriceRoomSortingStrategy>();
+builder.Services.AddScoped<IRoomSortingStrategy, NameRoomSortingStrategy>();
 
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IUserEmailService, UserEmailService>();
@@ -118,7 +141,15 @@ using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
 
-    await SeedIdentityAsync(services);
+    try
+    {
+        await SeedIdentityAsync(services);
+    }
+    catch (Exception)
+    {
+        Console.Error.WriteLine(
+            "Identity seed was skipped because the database is unavailable.");
+    }
 }
 
 

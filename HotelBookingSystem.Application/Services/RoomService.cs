@@ -5,21 +5,36 @@ using HotelBookingSystem.Application.Exceptions;
 using HotelBookingSystem.Application.Interfaces.IRepositories;
 using HotelBookingSystem.Application.Interfaces.IServices;
 using HotelBookingSystem.Core.Models;
+using HotelBookingSystem.Application.Strategies.RoomSorting;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 
 namespace HotelBookingSystem.Application.Services;
 
 public class RoomService : IRoomService
 {
+    private const string AllRoomsCacheKey = "hotel:rooms:all";//cache key
+
     private readonly IRoomRepository _roomRepository;
     private readonly IMapper _mapper;
+    private readonly IReadOnlyDictionary<string, IRoomSortingStrategy> _sortingStrategies;
+    private readonly IMemoryCache _cache;
+    private readonly ILogger<RoomService> _logger;
 
-    public RoomService(IRoomRepository roomRepository, IMapper mapper)
+    public RoomService(IRoomRepository roomRepository,IMapper mapper,IEnumerable<IRoomSortingStrategy> sortingStrategies,
+        IMemoryCache cache,
+        ILogger<RoomService> logger)
     {
         _roomRepository = roomRepository;
         _mapper = mapper;
+        _cache = cache;
+        _logger = logger;
+        _sortingStrategies = sortingStrategies.ToDictionary(
+            x => x.SortBy,StringComparer.OrdinalIgnoreCase);
     }
 
-    public async Task<PaginatedResultDto<RoomDto>> GetAllAsync(int pageNumber,int pageSize,int? roomTypeId = null,bool? isActive = null)
+    public async Task<PaginatedResultDto<RoomDto>> GetAllAsync(int pageNumber,int pageSize,
+        int? roomTypeId = null,bool? isActive = null,string sortBy = "roomNumber")
     {
         if (pageNumber < 1)
             pageNumber = 1;
@@ -27,18 +42,43 @@ public class RoomService : IRoomService
         if (pageSize < 1)
             pageSize = 10;
 
+        if (!_sortingStrategies.TryGetValue(sortBy, out var sortingStrategy))
+        {
+            throw new ConflictException(
+                $"Unsupported room sorting option '{sortBy}'. Supported options: {string.Join(", ", _sortingStrategies.Keys)}.");
+        }
+
+        var isDefaultAllRoomsRequest =
+            pageNumber == 1 &&
+            pageSize == 10 &&
+            roomTypeId is null &&
+            isActive is null &&
+            sortBy.Equals("roomNumber", StringComparison.OrdinalIgnoreCase);
+
+        if (isDefaultAllRoomsRequest &&
+            _cache.TryGetValue(AllRoomsCacheKey, out PaginatedResultDto<RoomDto>? cachedRooms) &&
+            cachedRooms is not null)
+        {
+            _logger.LogInformation("CACHE HIT: {CacheKey}", AllRoomsCacheKey);
+            return cachedRooms;
+        }
+
+        if (isDefaultAllRoomsRequest)
+            _logger.LogInformation("CACHE MISS: {CacheKey}", AllRoomsCacheKey);
+
         var result = await _roomRepository.GetPagedAsync(
             pageNumber,
             pageSize,
             roomTypeId,
-            isActive);
+            isActive,
+            sortingStrategy);
 
         var roomDtos = _mapper.Map<IEnumerable<RoomDto>>(result.Items);
 
         var totalPages =
             (int)Math.Ceiling(result.TotalCount / (double)pageSize);
 
-        return new PaginatedResultDto<RoomDto>
+        var response = new PaginatedResultDto<RoomDto>
         {
             Items = roomDtos,
             PageNumber = pageNumber,
@@ -46,6 +86,15 @@ public class RoomService : IRoomService
             TotalCount = result.TotalCount,
             TotalPages = totalPages
         };
+
+        if (isDefaultAllRoomsRequest)
+        {
+            // GetAllRooms can become stale when rooms are created, updated, deleted,
+            // or their active status changes, so the cache should not live for a long time.
+            _cache.Set(AllRoomsCacheKey, response, TimeSpan.FromMinutes(1));
+        }
+
+        return response;
     }
 
     public async Task<RoomDto?> GetByIdAsync(int id)
@@ -83,6 +132,8 @@ public class RoomService : IRoomService
         room = await _roomRepository.GetByIdWithRoomTypeAsync(room.Id)
             ?? room;
 
+        _cache.Remove(AllRoomsCacheKey);
+
         return _mapper.Map<RoomDto>(room);
     }
 
@@ -113,6 +164,8 @@ public class RoomService : IRoomService
 
         await _roomRepository.SaveChangesAsync();
 
+        _cache.Remove(AllRoomsCacheKey);
+
         return true;
     }
 
@@ -132,6 +185,8 @@ public class RoomService : IRoomService
 
         await _roomRepository.SaveChangesAsync();
 
+        _cache.Remove(AllRoomsCacheKey);
+
         return true;
     }
 
@@ -150,6 +205,8 @@ public class RoomService : IRoomService
         _roomRepository.Update(room);
 
         await _roomRepository.SaveChangesAsync();
+
+        _cache.Remove(AllRoomsCacheKey);
 
         return true;
     }

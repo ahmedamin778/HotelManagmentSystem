@@ -3,6 +3,8 @@ using HotelBookingSystem.Core.Models;
 using HotelBookingSystem.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
+using HotelBookingSystem.Application.Strategies.RoomSorting;
+
 namespace HotelBookingSystem.Infrastructure.Repositories;
 
 public class RoomRepository: GenericRepository<Room>, IRoomRepository
@@ -55,7 +57,8 @@ public class RoomRepository: GenericRepository<Room>, IRoomRepository
 
     public async Task<(IEnumerable<Room> Items, int TotalCount)> GetPagedAsync(int pageNumber,int pageSize,
     int? roomTypeId = null,
-    bool? isActive = null)
+    bool? isActive = null,
+    IRoomSortingStrategy? sortingStrategy = null)
     {
         var query = _context.Rooms.Include(x => x.RoomType)
             .AsQueryable();
@@ -74,8 +77,9 @@ public class RoomRepository: GenericRepository<Room>, IRoomRepository
 
         var totalCount = await query.CountAsync();
 
+        query = sortingStrategy?.Apply(query) ?? query.OrderBy(x => x.RoomNumber);
+
         var items = await query
-            .OrderBy(x => x.Id)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();

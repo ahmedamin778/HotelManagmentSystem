@@ -6,7 +6,7 @@ namespace HotelBookingSystem.Application.Interfaces.IServices;
 public interface IRoomService
 {
     Task<PaginatedResultDto<RoomDto>> GetAllAsync(int pageNumber,int pageSize,int? roomTypeId = null,
-        bool? isActive = null); 
+        bool? isActive = null,string sortBy = "roomNumber");
     Task<RoomDto?> GetByIdAsync(int id);
 
     Task<RoomDto> CreateAsync(CreateRoomDto dto);

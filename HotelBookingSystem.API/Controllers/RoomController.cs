@@ -20,9 +20,10 @@ public class RoomsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] int pageNumber = 1,[FromQuery] int pageSize = 10,
         [FromQuery] int? roomTypeId = null,
-        [FromQuery] bool? isActive = null)
+        [FromQuery] bool? isActive = null,
+        [FromQuery] string sortBy = "roomNumber")
     {
-        var rooms = await _roomService.GetAllAsync(pageNumber,pageSize,roomTypeId,isActive);
+        var rooms = await _roomService.GetAllAsync(pageNumber,pageSize,roomTypeId,isActive,sortBy);
 
         return Ok(rooms);
     }
