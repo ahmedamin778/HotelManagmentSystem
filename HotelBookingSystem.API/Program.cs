@@ -20,6 +20,10 @@ using HotelBookingSystem.Api.Features.Amenities.DeleteAmenity;
 using HotelBookingSystem.Api.Features.Amenities.GetAmenities;
 using HotelBookingSystem.Api.Features.Amenities.GetAmenityById;
 using HotelBookingSystem.Api.Features.Amenities.UpdateAmenity;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Globalization;
+using System.Security.Claims;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +42,69 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ApplicationDbContext>("database");
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("booking-creation", context =>
+        RateLimitPartition.GetTokenBucketLimiter(
+            GetClientIdentifier(context),
+            _ => new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 3,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                TokensPerPeriod = 1,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("dashboard-concurrency", context =>
+        RateLimitPartition.GetConcurrencyLimiter(
+            GetClientIdentifier(context),
+            _ => new ConcurrencyLimiterOptions
+            {
+                PermitLimit = 1,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.OnRejected = async (rejectedContext, cancellationToken) =>
+    {
+        var httpContext = rejectedContext.HttpContext;
+        var clientIdentifier = GetClientIdentifier(httpContext);
+        var logger = httpContext.RequestServices
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger("RateLimiting");
+
+        httpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+
+        if (rejectedContext.Lease.TryGetMetadata(
+                MetadataName.RetryAfter,
+                out var retryAfter))
+        {
+            httpContext.Response.Headers.RetryAfter = Math.Ceiling(
+                retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+        }
+
+        logger.LogWarning(
+            "Rate limit rejected at {Timestamp}. Client: {ClientIdentifier}, Endpoint: {Endpoint}, Method: {HttpMethod}, StatusCode: {StatusCode}",
+            DateTimeOffset.UtcNow,
+            clientIdentifier,
+            httpContext.Request.Path,
+            httpContext.Request.Method,
+            httpContext.Response.StatusCode);
+
+        await httpContext.Response.WriteAsJsonAsync(
+            new
+            {
+                statusCode = StatusCodes.Status429TooManyRequests,
+                message = "Request rejected because the rate limit was exceeded."
+            },
+            cancellationToken);
+    };
+});
 
 
 // Identity
@@ -169,11 +236,20 @@ app.UseCors("AllowAll");
 
 app.UseAuthentication();
 
+app.UseRateLimiter();
+
 app.UseAuthorization();
 
 app.MapControllers();
 
 app.Run();
+
+static string GetClientIdentifier(HttpContext context)
+{
+    return context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? context.Connection.RemoteIpAddress?.ToString()
+        ?? "unknown-client";
+}
 
 
 // Identity Seed

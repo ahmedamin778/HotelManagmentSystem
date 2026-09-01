@@ -1,6 +1,7 @@
 ﻿using HotelBookingSystem.Application.Interfaces.IServices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 using HotelBookingSystem.Application.Factories.ReportExport;
 using System.Text;
@@ -23,14 +24,13 @@ public class ReportsController : ControllerBase
 
     
     [HttpGet("dashboard")]
+    [EnableRateLimiting("dashboard-concurrency")]
     public async Task<IActionResult> GetDashboard()
     {
         var report = await _reportService.GetDashboardAsync();
 
         return Ok(report);
     }
-
-    //--//
 
     [HttpGet("dashboard/export")]
     public async Task<IActionResult> ExportDashboard([FromQuery] string format = "text")

@@ -2,6 +2,7 @@
 using HotelBookingSystem.Application.Interfaces.IServices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Security.Claims;
 
 namespace HotelBookingSystem.Api.Controllers;
@@ -20,6 +21,7 @@ public class BookingsController : ControllerBase
 
     [HttpPost]
     [Authorize(Roles = "Guest")]
+    [EnableRateLimiting("booking-creation")]
     public async Task<IActionResult> Create(CreateBookingDto dto)
     {
         var guestId = User.FindFirstValue(ClaimTypes.NameIdentifier);
