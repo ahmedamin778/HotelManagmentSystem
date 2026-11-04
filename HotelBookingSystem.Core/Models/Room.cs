@@ -14,6 +14,7 @@ namespace HotelBookingSystem.Core.Models
 
         public RoomType RoomType { get; set; } = null!;
         public bool IsActive { get; set; } = true;
+        public byte[] RowVersion { get; set; } = [];
         public ICollection<Booking> Bookings { get; set; } = new List<Booking>();
     }
 }

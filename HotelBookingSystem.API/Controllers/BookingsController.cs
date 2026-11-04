@@ -22,14 +22,24 @@ public class BookingsController : ControllerBase
     [HttpPost]
     [Authorize(Roles = "Guest")]
     [EnableRateLimiting("booking-creation")]
-    public async Task<IActionResult> Create(CreateBookingDto dto)
+    public async Task<IActionResult> Create(
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        CreateBookingDto dto)
     {
         var guestId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
         if (string.IsNullOrWhiteSpace(guestId))
             return Unauthorized("User identity could not be determined.");
 
-        var booking = await _bookingService.CreateAsync(guestId, dto);
+        if (!Guid.TryParse(idempotencyKey, out var parsedKey))
+        {
+            return BadRequest(new
+            {
+                message = "A valid Idempotency-Key header is required."
+            });
+        }
+
+        var booking = await _bookingService.CreateAsync(guestId, parsedKey, dto);
 
         return Ok(booking);
     }

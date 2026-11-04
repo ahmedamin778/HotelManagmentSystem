@@ -1,10 +1,12 @@
+using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HotelBookingSystem.Api.Features.Amenities.GetAmenities;
 
 [ApiController]
-[Route("api/Amenities")]
+[ApiVersion("1.0")]
+[Route("api/v{version:apiVersion}/amenities")]
 public class GetAmenitiesController : ControllerBase
 {
     private readonly GetAmenitiesHandler _handler;

@@ -2,6 +2,7 @@
 using HotelBookingSystem.Application.Interfaces.IServices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace HotelBookingSystem.Api.Controllers;
 
@@ -60,7 +61,17 @@ public class RoomsController : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id,UpdateRoomDto dto)
     {
-        await _roomService.UpdateAsync(id, dto);
+        try
+        {
+            await _roomService.UpdateAsync(id, dto);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Conflict(new
+            {
+                message = "This room was updated by another user. Refresh the room data and try again."
+            });
+        }
 
         return Ok("Room updated successfully.");
     }

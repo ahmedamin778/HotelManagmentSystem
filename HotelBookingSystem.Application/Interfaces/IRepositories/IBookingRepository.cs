@@ -9,6 +9,8 @@ public interface IBookingRepository : IGenericRepository<Booking>
 
     Task<Booking?> GetByIdWithDetailsAsync(int id);
 
+    Task<Booking?> GetByIdempotencyKeyAsync(string guestId, Guid idempotencyKey);
+
     Task<IEnumerable<Booking>> GetAllWithDetailsAsync();
 
     Task<IEnumerable<Room>> GetAvailableRoomsAsync(DateTime checkInDate, DateTime checkOutDate);

@@ -24,13 +24,56 @@ using Microsoft.AspNetCore.RateLimiting;
 using System.Globalization;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+using Microsoft.OpenApi;
+using HotelBookingSystem.Api.Services;
+using Asp.Versioning;
 
 var builder = WebApplication.CreateBuilder(args);
 
 
 builder.Services.AddControllers();
+builder.Services.AddApiVersioning(options =>
+{
+    options.DefaultApiVersion = new ApiVersion(1, 0);
+    options.AssumeDefaultVersionWhenUnspecified = true;
+    options.ReportApiVersions = true;
+})
+.AddMvc()
+.AddApiExplorer(options =>
+{
+    options.GroupNameFormat = "'v'VVV";
+    options.SubstituteApiVersionInUrl = true;
+});
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    const string bearerScheme = "Bearer";
+
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "HotelBookingSystem.API",
+        Version = "v1"
+    });
+
+    options.SwaggerDoc("v2", new OpenApiInfo
+    {
+        Title = "HotelBookingSystem.API",
+        Version = "v2"
+    });
+
+    options.AddSecurityDefinition(bearerScheme, new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Enter the JWT token returned by POST /api/Auth/login."
+    });
+
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecuritySchemeReference(bearerScheme, document, null)] = []
+    });
+});
 builder.Services.AddMemoryCache();
 
 
@@ -188,6 +231,7 @@ builder.Services.AddScoped<IRoomSortingStrategy, NameRoomSortingStrategy>();
 
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IUserEmailService, UserEmailService>();
+builder.Services.AddSingleton<DamageReportFileService>();
 
 // CORS
 builder.Services.AddCors(options =>
@@ -203,19 +247,37 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
-// Seed Identity
+// Apply migrations and seed test data
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
+    var logger = services
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("DatabaseSeeder");
+    const int maxAttempts = 10;
 
-    try
+    for (var attempt = 1; attempt <= maxAttempts; attempt++)
     {
-        await SeedIdentityAsync(services);
-    }
-    catch (Exception)
-    {
-        Console.Error.WriteLine(
-            "Identity seed was skipped because the database is unavailable.");
+        try
+        {
+            await DatabaseSeeder.SeedAsync(services);
+            break;
+        }
+        catch (Exception ex) when (attempt < maxAttempts)
+        {
+            logger.LogWarning(
+                ex,
+                "Database is not ready. Attempt {Attempt}/{MaxAttempts}. Retrying in 3 seconds.",
+                attempt,
+                maxAttempts);
+
+            await Task.Delay(TimeSpan.FromSeconds(3));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Database migration or seed failed after {MaxAttempts} attempts.", maxAttempts);
+            throw;
+        }
     }
 }
 
@@ -224,7 +286,11 @@ using (var scope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "HotelBookingSystem.API v1");
+        options.SwaggerEndpoint("/swagger/v2/swagger.json", "HotelBookingSystem.API v2");
+    });
 }
 
 
@@ -249,84 +315,4 @@ static string GetClientIdentifier(HttpContext context)
     return context.User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? context.Connection.RemoteIpAddress?.ToString()
         ?? "unknown-client";
-}
-
-
-// Identity Seed
-static async Task SeedIdentityAsync(IServiceProvider services)
-{
-    var roleManager =services.GetRequiredService<RoleManager<IdentityRole>>();
-    var userManager =services.GetRequiredService<UserManager<ApplicationUser>>();
-
-    // Create Roles
-    string[] roles =
-    {
-        "Admin",
-        "Staff",
-        "Guest"
-    };
-
-    foreach (var role in roles)
-    {
-        if (!await roleManager.RoleExistsAsync(role))
-        {
-            var result =await roleManager.CreateAsync(new IdentityRole(role));
-
-            if (!result.Succeeded)
-            {
-                throw new Exception(string.Join(", ", result.Errors.Select(x => x.Description)));
-            }
-        }
-    }
-
-
-    // Create Default Admin
-    const string adminEmail ="admin@hotel.com";
-    const string adminPassword ="Admin@123456";
-
-    var admin =await userManager.FindByEmailAsync(adminEmail);
-
-    if (admin is null)
-    {
-        admin = new ApplicationUser
-        {
-            FullName = "Hotel Admin",
-            UserName = adminEmail,
-            Email = adminEmail,
-            EmailConfirmed = true
-        };
-
-        var result =
-            await userManager.CreateAsync(
-                admin,
-                adminPassword);
-
-        if (!result.Succeeded)
-        {
-            throw new Exception(
-                string.Join(
-                    ", ",
-                    result.Errors.Select(
-                        x => x.Description)));
-        }
-    }
-
-
-    // Add Admin Role
-    if (!await userManager.IsInRoleAsync(admin,"Admin"))
-    {
-        var result =
-            await userManager.AddToRoleAsync(
-                admin,
-                "Admin");
-
-        if (!result.Succeeded)
-        {
-            throw new Exception(
-                string.Join(
-                    ", ",
-                    result.Errors.Select(
-                        x => x.Description)));
-        }
-    }
 }

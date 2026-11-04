@@ -40,7 +40,10 @@ public class MappingProfile : Profile
 
         CreateMap<CreateRoomDto, Room>();
 
-        CreateMap<UpdateRoomDto, Room>();
+        CreateMap<UpdateRoomDto, Room>()
+            .ForMember(
+                dest => dest.RowVersion,
+                opt => opt.Ignore());
 
 
         // =========================

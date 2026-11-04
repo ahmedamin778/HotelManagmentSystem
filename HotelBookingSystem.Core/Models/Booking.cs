@@ -8,6 +8,9 @@ public class Booking
 
     public string GuestId { get; set; } = string.Empty;
 
+    //RefrenceKey
+    public Guid? IdempotencyKey { get; set; }
+
     public int RoomId { get; set; }
     public Room Room { get; set; } = null!;
 

@@ -1,0 +1,32 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Server=database,1433;Database=${MSSQL_DATABASE};User Id=sa;Password=${MSSQL_SA_PASSWORD};Encrypt=False;TrustServerCertificate=True"
+      Jwt__Key: "${JWT_KEY}"
+      EmailSettings__Host: "${EMAIL_HOST}"
+      EmailSettings__Port: "${EMAIL_PORT}"
+      EmailSettings__Username: "${EMAIL_USERNAME}"
+      EmailSettings__Password: "${EMAIL_PASSWORD}"
+      EmailSettings__From: "${EMAIL_FROM}"
+      Diagnostics__EnvironmentLabel: "${DIAGNOSTICS_LABEL}"
+    depends_on:
+      - database
+
+  database:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    ports:
+      - "14330:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD}"
+    volumes:
+      - hotelbooking-sql-data:/var/opt/mssql
+
+volumes:
+  hotelbooking-sql-data:

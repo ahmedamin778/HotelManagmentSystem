@@ -160,6 +160,8 @@ public class RoomService : IRoomService
 
         _mapper.Map(dto, room);
 
+        _roomRepository.SetOriginalRowVersion(room, dto.RowVersion);
+
         _roomRepository.Update(room);
 
         await _roomRepository.SaveChangesAsync();

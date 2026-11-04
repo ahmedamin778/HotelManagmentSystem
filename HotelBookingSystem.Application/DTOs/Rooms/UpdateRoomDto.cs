@@ -13,5 +13,9 @@ namespace HotelBookingSystem.Application.DTOs.Rooms
 
         [Range(1, int.MaxValue)]
         public int RoomTypeId { get; set; }
+
+        [Required]
+        [MinLength(1)]
+        public byte[] RowVersion { get; set; } = [];
     }
 }

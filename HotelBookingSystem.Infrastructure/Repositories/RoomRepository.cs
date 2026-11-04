@@ -39,6 +39,13 @@ public class RoomRepository: GenericRepository<Room>, IRoomRepository
             .FirstOrDefaultAsync(x => x.Id == id);
     }
 
+    public void SetOriginalRowVersion(Room room, byte[] rowVersion)
+    {
+        _context.Entry(room)
+            .Property(x => x.RowVersion)
+            .OriginalValue = rowVersion;
+    }
+
     public async Task<IEnumerable<Room>>GetAllWithRoomTypeAndBookingsAsync(int roomTypeId)
     {
         return await _context.Rooms

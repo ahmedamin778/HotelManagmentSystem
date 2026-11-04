@@ -1,4 +1,12 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".dockerignore" />
+    <File Path=".env.example" />
+    <File Path=".gitignore" />
+    <File Path="docker-compose.yml" />
+    <File Path="Dockerfile" />
+    <File Path="README.md" />
+  </Folder>
   <Project Path="HotelBookingSystem.API/HotelBookingSystem.API.csproj" />
   <Project Path="HotelBookingSystem.Application/HotelBookingSystem.Application.csproj" />
   <Project Path="HotelBookingSystem.Core/HotelBookingSystem.Core.csproj" />

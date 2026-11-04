@@ -62,6 +62,16 @@ public class BookingRepository : GenericRepository<Booking>, IBookingRepository
             .FirstOrDefaultAsync(x => x.Id == id);
     }
 
+    public async Task<Booking?> GetByIdempotencyKeyAsync(string guestId,Guid idempotencyKey)
+    {
+        return await _context.Bookings
+            .Include(x => x.Room)
+            .ThenInclude(x => x.RoomType)
+            .FirstOrDefaultAsync(x =>
+                x.GuestId == guestId &&
+                x.IdempotencyKey == idempotencyKey);
+    }
+
     
     public async Task<IEnumerable<Booking>> GetAllWithDetailsAsync()
     {

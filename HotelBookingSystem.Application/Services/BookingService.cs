@@ -15,6 +15,8 @@ namespace HotelBookingSystem.Application.Services;
 
 public class BookingService : IBookingService
 {
+    private static readonly SemaphoreSlim CreateLock = new(1, 1);
+
     private readonly INotificationService _notificationService;
     private readonly IUserEmailService _userEmailService;
     private readonly IBookingRepository _bookingRepository;
@@ -36,7 +38,10 @@ public class BookingService : IBookingService
 
     
 
-    public async Task<BookingDto> CreateAsync(string guestId,CreateBookingDto dto)
+    public async Task<BookingDto> CreateAsync(
+        string guestId,
+        Guid idempotencyKey,
+        CreateBookingDto dto)
     {
         if (string.IsNullOrWhiteSpace(guestId))
             throw new UnauthorizedAccessException("Guest identity could not be determined.");
@@ -44,63 +49,92 @@ public class BookingService : IBookingService
         var checkIn = dto.CheckInDate.Date;
         var checkOut = dto.CheckOutDate.Date;
 
-        if (checkIn < DateTime.UtcNow.Date)
+        await CreateLock.WaitAsync();
+
+        try
         {
-            throw new ConflictException("Check-in date cannot be in the past.");
+            var existingBooking = await _bookingRepository
+                .GetByIdempotencyKeyAsync(guestId, idempotencyKey);
+
+            if (existingBooking is not null)
+            {
+                var isSameRequest =
+                    existingBooking.RoomId == dto.RoomId &&
+                    existingBooking.CheckInDate == checkIn &&
+                    existingBooking.CheckOutDate == checkOut;
+
+                if (!isSameRequest)
+                {
+                    throw new ConflictException(
+                        "This Idempotency-Key was already used for a different booking request.");
+                }
+
+                return _mapper.Map<BookingDto>(existingBooking);
+            }
+
+            if (checkIn < DateTime.UtcNow.Date)
+            {
+                throw new ConflictException("Check-in date cannot be in the past.");
+            }
+
+            if (checkOut <= checkIn)
+            {
+                throw new ConflictException("Check-out date must be after check-in date.");
+            }
+
+            var room =await _roomRepository.GetByIdWithRoomTypeAsync(dto.RoomId);
+
+            if (room is null)
+            {
+                throw new NotFoundException("Room not found.");
+            }
+
+            if (!room.IsActive)
+            {
+                throw new ConflictException("This room is currently unavailable.");
+            }
+
+            var available =await _bookingRepository.IsRoomAvailableAsync(dto.RoomId,checkIn,checkOut);
+
+            if (!available)
+            {
+                throw new ConflictException("The room is already booked for the selected dates.");
+            }
+
+            var numberOfNights =(checkOut - checkIn).Days;
+
+            var totalPrice =numberOfNights *room.RoomType.PricePerNight;
+
+            var booking = new Booking
+            {
+                GuestId = guestId,
+                IdempotencyKey = idempotencyKey,
+                RoomId = dto.RoomId,
+                CheckInDate = checkIn,
+                CheckOutDate = checkOut,
+                NumberOfNights = numberOfNights,
+                TotalPrice = totalPrice,
+                Status = BookingStatus.Requested,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _bookingRepository.AddAsync(booking);
+
+            await _bookingRepository.SaveChangesAsync();
+
+            var createdBooking =await _bookingRepository.GetByIdWithDetailsAsync(booking.Id);
+
+            await NotifyGuestAsync(
+                booking,
+                "Booking Request Received",
+                $"Your booking request #{booking.Id} has been received for room {room.RoomNumber} from {checkIn:yyyy-MM-dd} to {checkOut:yyyy-MM-dd}.");
+
+            return _mapper.Map<BookingDto>(createdBooking);
         }
-
-        if (checkOut <= checkIn)
+        finally
         {
-            throw new ConflictException("Check-out date must be after check-in date.");
+            CreateLock.Release();
         }
-
-        var room =await _roomRepository.GetByIdWithRoomTypeAsync(dto.RoomId);
-
-        if (room is null)
-        {
-            throw new NotFoundException("Room not found.");
-        }
-
-        if (!room.IsActive)
-        {
-            throw new ConflictException("This room is currently unavailable.");
-        }
-
-        var available =await _bookingRepository.IsRoomAvailableAsync(dto.RoomId,checkIn,checkOut);
-
-        if (!available)
-        {
-            throw new ConflictException("The room is already booked for the selected dates.");
-        }
-
-        var numberOfNights =(checkOut - checkIn).Days;
-
-        var totalPrice =numberOfNights *room.RoomType.PricePerNight;
-
-        var booking = new Booking
-        {
-            GuestId = guestId,
-            RoomId = dto.RoomId,
-            CheckInDate = checkIn,
-            CheckOutDate = checkOut,
-            NumberOfNights = numberOfNights,
-            TotalPrice = totalPrice,
-            Status = BookingStatus.Requested,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        await _bookingRepository.AddAsync(booking);
-
-        await _bookingRepository.SaveChangesAsync();
-
-        var createdBooking =await _bookingRepository.GetByIdWithDetailsAsync(booking.Id);
-
-        await NotifyGuestAsync(
-            booking,
-            "Booking Request Received",
-            $"Your booking request #{booking.Id} has been received for room {room.RoomNumber} from {checkIn:yyyy-MM-dd} to {checkOut:yyyy-MM-dd}.");
-
-        return _mapper.Map<BookingDto>(createdBooking);
     }
 
     

@@ -15,5 +15,7 @@ namespace HotelBookingSystem.Application.DTOs.Rooms
         public string RoomTypeName { get; set; } = string.Empty;
 
         public bool IsActive { get; set; }
+
+        public byte[] RowVersion { get; set; } = [];
     }
 }

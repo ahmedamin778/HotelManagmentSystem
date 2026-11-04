@@ -10,6 +10,7 @@ public interface IRoomRepository : IGenericRepository<Room>
     Task<bool> RoomTypeExistsAsync(int roomTypeId);
     Task<IEnumerable<Room>> GetAllWithRoomTypeAsync();
     Task<Room?> GetByIdWithRoomTypeAsync(int id);
+    void SetOriginalRowVersion(Room room, byte[] rowVersion);
     Task<IEnumerable<Room>> GetAllWithRoomTypeAndBookingsAsync(int roomTypeId);
     Task<(IEnumerable<Room> Items, int TotalCount)> GetPagedAsync(
         int pageNumber,int pageSize,int? roomTypeId = null,bool? isActive = null,

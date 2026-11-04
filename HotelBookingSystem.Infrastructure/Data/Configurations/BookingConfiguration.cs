@@ -39,5 +39,9 @@ public class BookingConfiguration: IEntityTypeConfiguration<Booking>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(x => x.GuestId);
+
+        builder.HasIndex(x => new { x.GuestId, x.IdempotencyKey })
+            .IsUnique()
+            .HasFilter("[IdempotencyKey] IS NOT NULL");
     }
 }
